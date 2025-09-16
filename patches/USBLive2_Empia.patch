@@ -1,0 +1,437 @@
+diff -ruN ./em28xx/em28xx-cards.c ./em28xx/em28xx-cards.c
+--- ./em28xx/em28xx-cards.c	2025-09-15 10:15:11.000000000 -0500
++++ ./em28xx/em28xx-cards.c	2025-09-15 22:21:14.955712234 -0500
+@@ -2628,6 +2628,23 @@
+ 			.gpio     = mygica_utv3_tuner_audio_gpio,
+ 		} },
+ 	},
++	[EM2828X_BOARD_HAUPPAUGE_USB_LIVE2] = {
++		.name         = "Hauppauge USB Live2",
++		.vchannels    = 2,
++		.tuner_type   = TUNER_ABSENT,
++		.has_dvb      = 0,
++		.decoder      = EM28XX_BUILTIN,
++		.i2c_speed    = EM28XX_I2C_CLK_WAIT_ENABLE | EM28XX_I2C_FREQ_400_KHZ,
++		.input           = { {
++			.type     = EM28XX_VMUX_COMPOSITE,
++			.vmux     = 0,
++			.amux     = EM28XX_AMUX_LINE_IN,
++		}, {
++			.type     = EM28XX_VMUX_SVIDEO,
++			.vmux     = 1,
++			.amux     = EM28XX_AMUX_LINE_IN,
++		} },
++	},
+ };
+ EXPORT_SYMBOL_GPL(em28xx_boards);
+ 
+@@ -2763,6 +2780,8 @@
+ 			.driver_info = EM28174_BOARD_HAUPPAUGE_WINTV_DUALHD_01595 },
+ 	{ USB_DEVICE(0x2040, 0x846d),
+ 			.driver_info = EM2874_BOARD_HAUPPAUGE_USB_QUADHD },
++	{ USB_DEVICE(0x2040, 0xc220),
++			.driver_info = EM2828X_BOARD_HAUPPAUGE_USB_LIVE2 },
+ 	{ USB_DEVICE(0x0438, 0xb002),
+ 			.driver_info = EM2880_BOARD_AMD_ATI_TV_WONDER_HD_600 },
+ 	{ USB_DEVICE(0x2001, 0xf112),
+@@ -3253,6 +3272,7 @@
+ 	case EM2884_BOARD_HAUPPAUGE_WINTV_HVR_930C:
+ 	case EM28174_BOARD_HAUPPAUGE_WINTV_DUALHD_DVB:
+ 	case EM28174_BOARD_HAUPPAUGE_WINTV_DUALHD_01595:
++	case EM2828X_BOARD_HAUPPAUGE_USB_LIVE2:
+ 	{
+ 		struct tveeprom tv;
+ 
+@@ -3626,6 +3646,11 @@
+ 			}
+ 			/* NOTE: the em2820 is used in webcams, too ! */
+ 			break;
++		case CHIP_ID_EM2828X:
++			chip_name = "em2828X";
++			dev->wait_after_write = 0;
++			dev->eeprom_addrwidth_16bit = 1;
++			break;
+ 		case CHIP_ID_EM2840:
+ 			chip_name = "em2840";
+ 			break;
+@@ -4040,6 +4065,8 @@
+ 			try_bulk = 1;
+ 		else
+ 			try_bulk = 0;
++	} else if (dev->board.decoder == EM28XX_BUILTIN && dev->analog_xfer_mode) {
++		try_bulk = 1;
+ 	} else {
+ 		try_bulk = usb_xfer_mode > 0;
+ 	}
+diff -ruN ./em28xx/em28xx-core.c ./em28xx/em28xx-core.c
+--- ./em28xx/em28xx-core.c	2025-09-15 10:15:11.000000000 -0500
++++ ./em28xx/em28xx-core.c	2025-09-15 22:21:26.979040398 -0500
+@@ -499,7 +499,8 @@
+ 	if (dev->chip_id == CHIP_ID_EM2870 ||
+ 	    dev->chip_id == CHIP_ID_EM2874 ||
+ 	    dev->chip_id == CHIP_ID_EM28174 ||
+-	    dev->chip_id == CHIP_ID_EM28178) {
++	    dev->chip_id == CHIP_ID_EM28178 ||
++	    dev->chip_id == CHIP_ID_EM2828X) {
+ 		/* Digital only device - don't load any alsa module */
+ 		dev->int_audio_type = EM28XX_INT_AUDIO_NONE;
+ 		dev->usb_audio_type = EM28XX_USB_AUDIO_NONE;
+@@ -1171,3 +1172,140 @@
+ 	mutex_unlock(&em28xx_devlist_mutex);
+ 	return 0;
+ }
++
++void em2828X_decoder_vmux(struct em28xx *dev, unsigned int vin)
++{
++	em28xx_write_reg(dev, 0x24, 0x00);
++	em28xx_write_reg(dev, 0x25, 0x02);
++	em28xx_write_reg(dev, 0x2E, 0x00);
++	em28xx_write_reg(dev, 0xB6, 0x8F);
++	em28xx_write_reg(dev, 0xB8, 0x00);
++
++	em28xx_write_reg(dev, 0x7A0B, 0x00);
++	em28xx_write_reg(dev, 0x7A1C, 0x1E);
++	em28xx_write_reg(dev, 0x7A1D, 0x99);
++	em28xx_write_reg(dev, 0x7A1E, 0x99);
++	em28xx_write_reg(dev, 0x7A1F, 0x9A);
++	em28xx_write_reg(dev, 0x7A20, 0x3d);
++	em28xx_write_reg(dev, 0x7A21, 0x3e);
++	em28xx_write_reg(dev, 0x7A29, 0x00);
++	em28xx_write_reg(dev, 0x7A2F, 0x52);
++	em28xx_write_reg(dev, 0x7A40, 0x05);
++	em28xx_write_reg(dev, 0x7A51, 0x00);
++	em28xx_write_reg(dev, 0x7AC1, 0x1B);
++
++	if (vin == EM2828X_COMPOSITE) {
++		dev_info(&dev->intf->dev, "%s() EM2828X_COMPOSITE", __func__);
++		em28xx_write_reg(dev, 0x38, 0x01);
++		em28xx_write_reg(dev, 0xB1, 0x70);
++		em28xx_write_reg(dev, 0xB3, 0x00);
++		em28xx_write_reg(dev, 0xB5, 0x00);
++
++		em28xx_write_reg(dev, 0x7A02, 0x4f);
++	} else {/* EM2828X_SVIDEO */
++		dev_info(&dev->intf->dev, "%s() EM2828X_SVIDEO", __func__);
++		em28xx_write_reg(dev, 0x38, 0x00);
++		em28xx_write_reg(dev, 0xB1, 0x60);
++		em28xx_write_reg(dev, 0xB3, 0x10);
++		em28xx_write_reg(dev, 0xB5, 0x10);
++
++		em28xx_write_reg(dev, 0x7A02, 0x4e);
++	}
++
++	em28xx_write_reg(dev, 0x7A3F, 0x01);
++	em28xx_write_reg(dev, 0x7A3F, 0x00);
++}
++EXPORT_SYMBOL_GPL(em2828X_decoder_vmux);
++
++void em2828X_decoder_set_std(struct em28xx *dev, v4l2_std_id norm)
++{
++	if (norm & V4L2_STD_525_60) {
++		dev_info(&dev->intf->dev, "%s() V4L2_STD_525_60", __func__);
++		em28xx_write_reg(dev, 0x7A01, 0x05);
++		em28xx_write_reg(dev, 0x7A04, 0xDD);
++		em28xx_write_reg(dev, 0x7A07, 0x60);
++		em28xx_write_reg(dev, 0x7A08, 0x7A);
++		em28xx_write_reg(dev, 0x7A09, 0x02);
++		em28xx_write_reg(dev, 0x7A0A, 0x7C);
++		em28xx_write_reg(dev, 0x7A0C, 0x8A);
++		em28xx_write_reg(dev, 0x7A0F, 0x1C);
++		em28xx_write_reg(dev, 0x7A18, 0x20);
++		em28xx_write_reg(dev, 0x7A19, 0x74);
++		em28xx_write_reg(dev, 0x7A1A, 0x5D);
++		em28xx_write_reg(dev, 0x7A1B, 0x17);
++		em28xx_write_reg(dev, 0x7A2E, 0x85);
++		em28xx_write_reg(dev, 0x7A31, 0x63);
++		em28xx_write_reg(dev, 0x7A82, 0x42);
++		em28xx_write_reg(dev, 0x7AC0, 0xD4);
++
++		if(INPUT(dev->ctl_input)->vmux == EM2828X_COMPOSITE) {
++			dev_info(&dev->intf->dev, "%s() EM2828X_COMPOSITE", __func__);
++			em28xx_write_reg(dev, 0x7A00, 0x00);
++			em28xx_write_reg(dev, 0x7A03, 0x00);
++			em28xx_write_reg(dev, 0x7A30, 0x22);
++			em28xx_write_reg(dev, 0x7A80, 0x03);
++		} else {
++			dev_info(&dev->intf->dev, "%s() EM2828X_SVIDEO", __func__);
++			em28xx_write_reg(dev, 0x7A00, 0x01);
++			em28xx_write_reg(dev, 0x7A03, 0x03);
++			em28xx_write_reg(dev, 0x7A30, 0x20);
++			em28xx_write_reg(dev, 0x7A80, 0x04);
++		}
++	} else if (norm & V4L2_STD_625_50) {
++		dev_info(&dev->intf->dev, "%s() V4L2_STD_625_50", __func__);
++		em28xx_write_reg(dev, 0x7A04, 0xDC);
++		em28xx_write_reg(dev, 0x7A0C, 0x67);
++		em28xx_write_reg(dev, 0x7A0F, 0x1C);
++		em28xx_write_reg(dev, 0x7A18, 0x28);
++		em28xx_write_reg(dev, 0x7A19, 0x32);
++		em28xx_write_reg(dev, 0x7A1A, 0xB9);
++		em28xx_write_reg(dev, 0x7A1B, 0x86);
++		em28xx_write_reg(dev, 0x7A31, 0xC3);
++		em28xx_write_reg(dev, 0x7A82, 0x52);
++
++		if(INPUT(dev->ctl_input)->vmux == EM2828X_COMPOSITE) {
++			dev_info(&dev->intf->dev, "%s() EM2828X_COMPOSITE", __func__);
++			em28xx_write_reg(dev, 0x7A00, 0x32);
++			em28xx_write_reg(dev, 0x7A01, 0x10);
++			em28xx_write_reg(dev, 0x7A03, 0x06);
++			em28xx_write_reg(dev, 0x7A07, 0x2f);
++			em28xx_write_reg(dev, 0x7A08, 0x77);
++			em28xx_write_reg(dev, 0x7A09, 0x0f);
++			em28xx_write_reg(dev, 0x7A0A, 0x8c);
++			em28xx_write_reg(dev, 0x7A20, 0x3d);
++			em28xx_write_reg(dev, 0x7A2E, 0x88);
++			em28xx_write_reg(dev, 0x7A30, 0x2c);
++			em28xx_write_reg(dev, 0x7A80, 0x07);
++		} else {
++			dev_info(&dev->intf->dev, "%s() EM2828X_SVIDEO", __func__);
++			em28xx_write_reg(dev, 0x7A00, 0x33);
++			em28xx_write_reg(dev, 0x7A01, 0x04);
++			em28xx_write_reg(dev, 0x7A03, 0x04);
++			em28xx_write_reg(dev, 0x7A07, 0x20);
++			em28xx_write_reg(dev, 0x7A08, 0x6a);
++			em28xx_write_reg(dev, 0x7A09, 0x16);
++			em28xx_write_reg(dev, 0x7A0A, 0x80);
++			em28xx_write_reg(dev, 0x7A2E, 0x8a);
++			em28xx_write_reg(dev, 0x7A30, 0x26);
++			em28xx_write_reg(dev, 0x7A80, 0x08);
++		}
++	} else {
++		dev_err(&dev->intf->dev, "%s() Unsupported STD: %X", __func__, norm);
++	}
++
++	em28xx_write_reg(dev, 0x7A3F, 0x01);
++	em28xx_write_reg(dev, 0x7A3F, 0x00);
++}
++EXPORT_SYMBOL_GPL(em2828X_decoder_set_std);
++
++int em2828X_decoder_get_lock_status(struct em28xx *dev)
++{
++	int lock_status = 0x0;
++
++	lock_status = em28xx_read_reg(dev, 0x7A3A);
++	if((lock_status & 0x02))
++		return 1;
++	else
++		return 0;
++}
++EXPORT_SYMBOL_GPL(em2828X_decoder_get_lock_status);
+diff -ruN ./em28xx/em28xx.h ./em28xx/em28xx.h
+--- ./em28xx/em28xx.h	2025-09-15 10:15:11.000000000 -0500
++++ ./em28xx/em28xx.h	2025-09-15 22:22:57.659504624 -0500
+@@ -144,6 +144,7 @@
+ #define EM2860_BOARD_MYGICA_IGRABBER              105
+ #define EM2874_BOARD_HAUPPAUGE_USB_QUADHD         106
+ #define EM2860_BOARD_MYGICA_UTV3                  107
++#define EM2828X_BOARD_HAUPPAUGE_USB_LIVE2         108
+ 
+ /* Limits minimum and default number of buffers */
+ #define EM28XX_MIN_BUF 4
+@@ -425,6 +426,7 @@
+ 	EM28XX_NODECODER = 0,
+ 	EM28XX_TVP5150,
+ 	EM28XX_SAA711X,
++	EM28XX_BUILTIN,
+ };
+ 
+ enum em28xx_sensor {
+@@ -763,6 +765,7 @@
+ 	// Snapshot button input device
+ 	char snapshot_button_path[30];	// path of the input dev
+ 	struct input_dev *sbutton_input_dev;
++	int analog_xfer_mode;
+ 
+ #ifdef CONFIG_MEDIA_CONTROLLER
+ 	struct media_device *media_dev;
+@@ -843,4 +846,12 @@
+ int em28xx_detect_sensor(struct em28xx *dev);
+ int em28xx_init_camera(struct em28xx *dev);
+ 
++/* Built in decoder capture options */
++#define V4L2_CID_LOCK_STATUS V4L2_CID_LASTP1
++#define EM2828X_COMPOSITE	0
++#define EM2828X_SVIDEO		1
++void em2828X_decoder_vmux(struct em28xx *dev, unsigned int vin);
++void em2828X_decoder_set_std(struct em28xx *dev, v4l2_std_id norm);
++int em2828X_decoder_get_lock_status(struct em28xx *dev);
++
+ #endif
+diff -ruN ./em28xx/em28xx-i2c.c ./em28xx/em28xx-i2c.c
+--- ./em28xx/em28xx-i2c.c	2025-09-15 10:15:11.000000000 -0500
++++ ./em28xx/em28xx-i2c.c	2025-09-15 22:21:48.881637306 -0500
+@@ -864,6 +864,8 @@
+ 		 le16_to_cpu(dev_config->string2),
+ 		 le16_to_cpu(dev_config->string3));
+ 
++	dev->analog_xfer_mode = data[67] & 0x01;
++
+ 	return 0;
+ 
+ error:
+diff -ruN ./em28xx/em28xx-reg.h ./em28xx/em28xx-reg.h
+--- ./em28xx/em28xx-reg.h	2025-09-15 10:15:11.000000000 -0500
++++ ./em28xx/em28xx-reg.h	2025-09-15 22:22:17.344411328 -0500
+@@ -167,6 +167,8 @@
+ #define EM28XX_R26_COMPR	0x26
+ #define EM28XX_R27_OUTFMT	0x27
+ 
++#define LOCK_STATUS_DEFAULT	0x00
++
+ /* em28xx Output Format Register (0x27) */
+ #define EM28XX_OUTFMT_RGB_8_RGRG	0x00
+ #define EM28XX_OUTFMT_RGB_8_GRGR	0x01
+@@ -283,6 +285,7 @@
+ 	CHIP_ID_EM2884 = 68,
+ 	CHIP_ID_EM28174 = 113,
+ 	CHIP_ID_EM28178 = 114,
++	CHIP_ID_EM2828X = 148,
+ };
+ 
+ /*
+diff -ruN ./em28xx/em28xx-vbi.c ./em28xx/em28xx-vbi.c
+--- ./em28xx/em28xx-vbi.c	2025-09-15 10:15:11.000000000 -0500
++++ ./em28xx/em28xx-vbi.c	2025-09-15 22:31:58.095921494 -0500
+@@ -84,4 +84,6 @@
+ 	.buf_queue      = vbi_buffer_queue,
+ 	.start_streaming = em28xx_start_analog_streaming,
+ 	.stop_streaming = em28xx_stop_vbi_streaming,
++	.wait_prepare   = vb2_ops_wait_prepare,
++	.wait_finish    = vb2_ops_wait_finish,
+ };
+diff -ruN ./em28xx/em28xx-video.c ./em28xx/em28xx-video.c
+--- ./em28xx/em28xx-video.c	2025-09-15 10:15:11.000000000 -0500
++++ ./em28xx/em28xx-video.c	2025-09-16 14:04:50.504645683 -0500
+@@ -161,7 +161,8 @@
+ 	/* FIXME: check subdevices for VBI support */
+ 
+ 	if (dev->chip_id == CHIP_ID_EM2860 ||
+-	    dev->chip_id == CHIP_ID_EM2883)
++	    dev->chip_id == CHIP_ID_EM2883 ||
++	    dev->chip_id == CHIP_ID_EM2828X || dev->board.decoder == EM28XX_BUILTIN)
+ 		return 1;
+ 
+ 	/* Version of em28xx that does not support VBI */
+@@ -1229,6 +1230,8 @@
+ 	.buf_queue      = buffer_queue,
+ 	.start_streaming = em28xx_start_analog_streaming,
+ 	.stop_streaming = em28xx_stop_streaming,
++	.wait_prepare   = vb2_ops_wait_prepare,
++	.wait_finish    = vb2_ops_wait_finish,
+ };
+ 
+ static int em28xx_vb2_setup(struct em28xx *dev)
+@@ -1297,6 +1300,11 @@
+ 				     MSP_OUTPUT(MSP_SC_IN_DSP_SCART1), 0);
+ 	}
+ 
++	if (dev->board.decoder == EM28XX_BUILTIN) {
++		em2828X_decoder_vmux(dev, INPUT(index)->vmux);
++		em2828X_decoder_set_std(dev, dev->v4l2->norm);
++	}
++
+ 	if (dev->board.adecoder != EM28XX_NOADECODER) {
+ 		v4l2_device_call_all(v4l2_dev, 0, audio, s_routing,
+ 				     dev->ctl_ainput, dev->ctl_aoutput, 0);
+@@ -1366,8 +1374,40 @@
+ 	return (ret < 0) ? ret : 0;
+ }
+ 
++static int em28xx_g_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct em28xx_v4l2 *v4l2 =
++		  container_of(ctrl->handler, struct em28xx_v4l2, ctrl_handler);
++	struct em28xx *dev = v4l2->dev;
++	int ret = -EINVAL;
++
++	switch (ctrl->id) {
++	case V4L2_CID_LOCK_STATUS:
++		if (dev->board.decoder == EM28XX_BUILTIN) {
++			ctrl->val = em2828X_decoder_get_lock_status(dev);
++			ret = 0;
++		}
++		break;
++	}
++
++	return (ret < 0) ? ret : 0;
++}
++
+ static const struct v4l2_ctrl_ops em28xx_ctrl_ops = {
+ 	.s_ctrl = em28xx_s_ctrl,
++	.g_volatile_ctrl = em28xx_g_ctrl,
++};
++
++static const struct v4l2_ctrl_config em28xx_lock_status_config = {
++	.ops = &em28xx_ctrl_ops,
++	.id = V4L2_CID_LOCK_STATUS,
++	.name = "Lock Status",
++	.type = V4L2_CTRL_TYPE_BOOLEAN,
++	.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
++	.min = 0,
++	.max = 1,
++	.step = 1,
++	.def = 0,
+ };
+ 
+ static void size_to_scale(struct em28xx *dev,
+@@ -1586,6 +1626,10 @@
+ 	em28xx_resolution_set(dev);
+ 	v4l2_device_call_all(&v4l2->v4l2_dev, 0, video, s_std, v4l2->norm);
+ 
++	if (dev->board.decoder == EM28XX_BUILTIN) {
++		em2828X_decoder_set_std(dev, v4l2->norm);
++	}
++
+ 	return 0;
+ }
+ 
+@@ -2549,7 +2593,7 @@
+ 	}
+ 
+ 	hdl = &v4l2->ctrl_handler;
+-	v4l2_ctrl_handler_init(hdl, 8);
++	v4l2_ctrl_handler_init(hdl, 9);
+ 	v4l2->v4l2_dev.ctrl_handler = hdl;
+ 
+ 	if (dev->is_webcam)
+@@ -2737,6 +2781,7 @@
+ 		v4l2_ctrl_new_std(hdl, &em28xx_ctrl_ops,
+ 				  V4L2_CID_SHARPNESS,
+ 				  0, 0x0f, 1, SHARPNESS_DEFAULT);
++	v4l2_ctrl_new_custom(hdl, &em28xx_lock_status_config, NULL);
+ 
+ 	/* Reset image controls */
+ 	em28xx_colorlevels_set_default(dev);
+@@ -2777,6 +2822,9 @@
+ 		v4l2_disable_ioctl(&v4l2->vdev, VIDIOC_G_AUDIO);
+ 		v4l2_disable_ioctl(&v4l2->vdev, VIDIOC_S_AUDIO);
+ 	}
++	if (dev->chip_id == CHIP_ID_EM2828X || dev->board.decoder == EM28XX_BUILTIN) {
++		v4l2_disable_ioctl(&v4l2->vdev, VIDIOC_ENUM_FRAMESIZES);
++	}
+ 
+ 	/* register v4l2 video video_device */
+ 	ret = video_register_device(&v4l2->vdev, VFL_TYPE_VIDEO,
+@@ -2842,13 +2890,15 @@
+ 	em28xx_v4l2_create_entities(dev);
+ 
+ #ifdef CONFIG_MEDIA_CONTROLLER
+-	ret = v4l2_mc_create_media_graph(dev->media_dev);
+-	if (ret) {
+-		dev_err(&dev->intf->dev,
+-			"failed to create media graph\n");
+-		em28xx_v4l2_media_release(dev);
+-		goto unregister_dev;
+-	}
++    if (dev->board.decoder != EM28XX_BUILTIN) {
++        ret = v4l2_mc_create_media_graph(dev->media_dev);
++        if (ret) {
++            dev_err(&dev->intf->dev,
++                "failed to create media graph\n");
++            em28xx_v4l2_media_release(dev);
++            goto unregister_dev;
++        }
++    }
+ #endif
+ 
+ 	dev_info(&dev->intf->dev,
