@@ -1,6 +1,7 @@
 # e28xx DKMS Patcher
 
 This repository provides a DKMS module patch to add support for the **Hauppauge USB-Live 2 (Revision E1)** to the Linux `em28xx` driver family.  
+The driver has been copied from the 6.16 kernel tree and supplemented with a patch file that enables the support.
 It enables plug-and-play usage of the newer hardware revision on kernels that do not yet include this device ID.
 
 ---
