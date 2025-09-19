@@ -58,4 +58,5 @@ sudo modprobe em28xx
 ```bash
 sudo dkms uninstall -m em28xx-dkms -v 1.0
 sudo dkms remove -m em28xx-dkms/1.0
+sudo rmmod em28xx
 ```
