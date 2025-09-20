@@ -1,8 +1,10 @@
 # e28xx DKMS Patcher
 
-This repository provides a DKMS module patch to add support for the **Hauppauge USB-Live 2 (Revision E1)** to the Linux `em28xx` driver family.  
-The driver has been copied from the 6.16 kernel tree and supplemented with a patch file that enables the support.
-It enables plug-and-play usage of the newer hardware revision on kernels that do not yet include this device ID.
+This repository provides a DKMS module patch to add support for the **Hauppauge USB-Live 2 (Revision E1)** to the Linux `em28xx` driver family.
+This new card revision is based off of a new Empia chipset which has a built-in decoder.
+
+The original `em28xx` driver has been copied from the 6.16 kernel tree and supplemented with a patch file that enables the support.
+It enables plug-and-play usage of the newer hardware revision in kernel 6.16+ using a clean DKMS approach.
 
 ---
 
@@ -13,6 +15,15 @@ It enables plug-and-play usage of the newer hardware revision on kernels that do
 - Wraps a patch file that applies to the kernel 6.16+ `em28xx` driver in a DKMS package so it automatically rebuilds on kernel updates.
 - Leaves the rest of the kernel sources untouched.
 - DVB and remote control components are not compiled with this driver.
+
+---
+
+## Code Origin
+
+The patch is surgically adapted from `linux_6.11.0-17250128.0+mediatree+hauppauge.diff.gz` in the Hauppauge PPA which includes the source code.
+https://launchpad.net/~b-rad/+archive/ubuntu/kernel+mediatree+hauppauge/+sourcepub/16956120/+listing-archive-extra
+
+That diff includes the relevant driver source code but no new license terms. The driver remains licensed under GPL v2.0, consistent with the original kernel media tree.
 
 ---
 
