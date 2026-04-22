@@ -52,6 +52,8 @@ sudo dkms install -m em28xx-dkms -v 1.0
 sudo depmod -a
 ```
 
+Secure boot users: be sure to reboot and enroll the MOK if requested.
+
 Then unload the old em28xx driver (or reboot):
 ```bash
 sudo rmmod em28xx
